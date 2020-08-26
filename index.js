@@ -1,7 +1,9 @@
 const Express = require('express');
 require('dotenv').config()
-const Webhook = require('coinbase-commerce-node').Webhook;
-const axios = require('axios')
+const Webhook  = require('coinbase-commerce-node').Webhook;
+const redis   = require("redis");
+
+const publisher = redis.createClient();
 
 /**
  * Past your webhook secret from Settings/Webhook section
@@ -29,14 +31,13 @@ function rawBody(req, res, next) {
 router.post('/', function (request, response) {
 	let event;
 
-	console.log(request.headers);
-
 	try {
 		event = Webhook.verifyEventBody(
 			request.rawBody,
 			request.headers['x-cc-webhook-signature'],
 			webhookSecret
-		);
+        );
+        
 	} catch (error) {
 		console.log('Error occured', error.message);
 
@@ -52,28 +53,9 @@ router.post('/', function (request, response) {
         currency: event.data.pricing.local.currency,
         amount: event.data.pricing.local.amount
     }
-
-    console.log(paymentPayload);
-
-    //2. Make Network call to the backeend to send the webhook event paylod...
-    //The base uri
-    const CRYPTO_PAYMENT_URL = process.env.CRYPTO_PAYMENT_URL;
-
-    // Post Data function
-   const postPaymentPayload =  async () => {
-        // Make an API Call
-        try {
-            // Make an API Call
-            const response =  await axios.post(CRYPTO_PAYMENT_URL, paymentPayload);
-            console.log(response.data);
-        } catch(error) {
-            console.log(error);
-        }
-    }
-
-    // Make the acutal network call
-    postPaymentPayload();
-
+    // Publish the payment payload
+    publisher.publish("payment_webhook", JSON.stringify(paymentPayload));
+    // Return response
 	response.status(200).send('Signed Webhook Received: ' + event.id);
 });
 
